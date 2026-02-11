@@ -127,9 +127,185 @@ def _attempt_websocket_reconnect(ws_url, max_attempts, delay_s, initial_error):
     )
 
 
+def build_workflow_from_params(prompt, image_name, seed, width, height, cfg=1, sampler_name="euler", steps=4, lora_strength=0.2):
+    """
+    Build the complete workflow from minimal parameters with defaults.
+
+    Args:
+        prompt (str): The text prompt for generation
+        image_name (str): The name of the input image file
+        seed (int): Random seed for generation
+        width (int): Output width
+        height (int): Output height
+        cfg (float, optional): CFG scale. Defaults to 1.
+        sampler_name (str, optional): Sampler name. Defaults to "euler".
+        steps (int, optional): Number of sampling steps. Defaults to 4.
+        lora_strength (float, optional): LoRA strength. Defaults to 0.2.
+
+    Returns:
+        dict: Complete ComfyUI workflow
+    """
+    return {
+        "99": {
+            "inputs": {
+                "noise": ["109", 0],
+                "guider": ["110", 0],
+                "sampler": ["111", 0],
+                "sigmas": ["103", 0],
+                "latent_image": ["102", 0]
+            },
+            "class_type": "SamplerCustomAdvanced",
+            "_meta": {"title": "SamplerCustomAdvanced"}
+        },
+        "100": {
+            "inputs": {
+                "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+                "type": "flux2",
+                "device": "default"
+            },
+            "class_type": "CLIPLoader",
+            "_meta": {"title": "Load CLIP"}
+        },
+        "101": {
+            "inputs": {"vae_name": "flux2-vae.safetensors"},
+            "class_type": "VAELoader",
+            "_meta": {"title": "Load VAE"}
+        },
+        "102": {
+            "inputs": {
+                "width": width,
+                "height": height,
+                "batch_size": 1
+            },
+            "class_type": "EmptyFlux2LatentImage",
+            "_meta": {"title": "Empty Flux 2 Latent"}
+        },
+        "103": {
+            "inputs": {
+                "steps": steps,
+                "width": ["117", 0],
+                "height": ["117", 1]
+            },
+            "class_type": "Flux2Scheduler",
+            "_meta": {"title": "Flux2Scheduler"}
+        },
+        "104": {
+            "inputs": {
+                "upscale_method": "nearest-exact",
+                "megapixels": 1,
+                "resolution_steps": 1,
+                "image": ["125", 0]
+            },
+            "class_type": "ImageScaleToTotalPixels",
+            "_meta": {"title": "ImageScaleToTotalPixels"}
+        },
+        "105": {
+            "inputs": {
+                "pixels": ["104", 0],
+                "vae": ["101", 0]
+            },
+            "class_type": "VAEEncode",
+            "_meta": {"title": "VAE Encode"}
+        },
+        "106": {
+            "inputs": {
+                "samples": ["99", 0],
+                "vae": ["101", 0]
+            },
+            "class_type": "VAEDecode",
+            "_meta": {"title": "VAE Decode"}
+        },
+        "107": {
+            "inputs": {
+                "conditioning": ["119", 0],
+                "latent": ["105", 0]
+            },
+            "class_type": "ReferenceLatent",
+            "_meta": {"title": "ReferenceLatent"}
+        },
+        "108": {
+            "inputs": {
+                "conditioning": ["115", 0],
+                "latent": ["105", 0]
+            },
+            "class_type": "ReferenceLatent",
+            "_meta": {"title": "ReferenceLatent"}
+        },
+        "109": {
+            "inputs": {"noise_seed": seed},
+            "class_type": "RandomNoise",
+            "_meta": {"title": "RandomNoise"}
+        },
+        "110": {
+            "inputs": {
+                "cfg": cfg,
+                "model": ["116", 0],
+                "positive": ["107", 0],
+                "negative": ["108", 0]
+            },
+            "class_type": "CFGGuider",
+            "_meta": {"title": "CFGGuider"}
+        },
+        "111": {
+            "inputs": {"sampler_name": sampler_name},
+            "class_type": "KSamplerSelect",
+            "_meta": {"title": "KSamplerSelect"}
+        },
+        "113": {
+            "inputs": {
+                "unet_name": "flux-2-klein-9b.safetensors",
+                "weight_dtype": "default"
+            },
+            "class_type": "UNETLoader",
+            "_meta": {"title": "Load Diffusion Model"}
+        },
+        "115": {
+            "inputs": {"conditioning": ["119", 0]},
+            "class_type": "ConditioningZeroOut",
+            "_meta": {"title": "ConditioningZeroOut"}
+        },
+        "116": {
+            "inputs": {
+                "lora_name": "Flux Klein - NSFW v2.safetensors",
+                "strength_model": lora_strength,
+                "model": ["113", 0]
+            },
+            "class_type": "LoraLoaderModelOnly",
+            "_meta": {"title": "Load LoRA"}
+        },
+        "117": {
+            "inputs": {"image": ["104", 0]},
+            "class_type": "GetImageSize",
+            "_meta": {"title": "Get Image Size"}
+        },
+        "119": {
+            "inputs": {
+                "text": prompt,
+                "clip": ["100", 0]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {"title": "CLIP Text Encode (Positive Prompt)"}
+        },
+        "121": {
+            "inputs": {
+                "filename_prefix": "output",
+                "images": ["106", 0]
+            },
+            "class_type": "SaveImage",
+            "_meta": {"title": "Save Image"}
+        },
+        "125": {
+            "inputs": {"image": image_name},
+            "class_type": "LoadImage",
+            "_meta": {"title": "Load Image"}
+        }
+    }
+
+
 def validate_input(job_input):
     """
     Validates the input for the handler function.
+    Supports both full workflow format and minimal parameter format.
 
     Args:
         job_input (dict): The input data to validate.
@@ -149,6 +325,78 @@ def validate_input(job_input):
         except json.JSONDecodeError:
             return None, "Invalid JSON format in input"
 
+    # Check if this is the minimal parameter format
+    if "workflow" not in job_input and "prompt" in job_input:
+        # Minimal format validation
+        prompt = job_input.get("prompt")
+        image = job_input.get("image")
+        seed = job_input.get("seed")
+        width = job_input.get("width")
+        height = job_input.get("height")
+
+        # Validate required fields
+        if not prompt:
+            return None, "Missing required 'prompt' parameter"
+        if not image:
+            return None, "Missing required 'image' parameter"
+        if seed is None:
+            return None, "Missing required 'seed' parameter"
+        if not width:
+            return None, "Missing required 'width' parameter"
+        if not height:
+            return None, "Missing required 'height' parameter"
+
+        # Validate types
+        if not isinstance(prompt, str):
+            return None, "'prompt' must be a string"
+        if not isinstance(image, str):
+            return None, "'image' must be a base64 encoded string"
+        if not isinstance(seed, int):
+            return None, "'seed' must be an integer"
+        if not isinstance(width, int) or width <= 0:
+            return None, "'width' must be a positive integer"
+        if not isinstance(height, int) or height <= 0:
+            return None, "'height' must be a positive integer"
+
+        # Optional parameters with defaults
+        cfg = job_input.get("cfg", 1)
+        sampler_name = job_input.get("sampler_name", "euler")
+        steps = job_input.get("steps", 4)
+        lora_strength = job_input.get("lora_strength", 0.2)
+
+        # Generate unique image filename
+        image_name = f"input_character_{seed}.png"
+
+        # Build the workflow
+        workflow = build_workflow_from_params(
+            prompt=prompt,
+            image_name=image_name,
+            seed=seed,
+            width=width,
+            height=height,
+            cfg=cfg,
+            sampler_name=sampler_name,
+            steps=steps,
+            lora_strength=lora_strength
+        )
+
+        # Convert image to the format expected by the handler
+        images = [{
+            "name": image_name,
+            "image": image
+        }]
+
+        # Optional: API key for Comfy.org API Nodes, passed per-request
+        comfy_org_api_key = job_input.get("comfy_org_api_key")
+
+        # Return validated data and no error
+        return {
+            "workflow": workflow,
+            "images": images,
+            "comfy_org_api_key": comfy_org_api_key,
+        }, None
+
+    # Original full workflow format
     # Validate 'workflow' in input
     workflow = job_input.get("workflow")
     if workflow is None:

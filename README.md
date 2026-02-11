@@ -28,7 +28,7 @@ This project allows you to run ComfyUI workflows as a serverless API endpoint on
 1.  🐳 Choose one of the [available Docker images](#available-docker-images) for your serverless endpoint (e.g., `runpod/worker-comfyui:<version>-sd3`).
 2.  📄 Follow the [Deployment Guide](docs/deployment.md) to set up your RunPod template and endpoint.
 3.  ⚙️ Optionally configure the worker (e.g., for S3 upload) using environment variables - see the full [Configuration Guide](docs/configuration.md).
-4.  🧪 Pick an example workflow from [`test_resources/workflows/`](./test_resources/workflows/) or [get your own](#getting-the-workflow-json).
+4.  🧪 Pick an example workflow from [`test_resources/workflows/`](./test_resources/workflows/) or [get your own](#getting-the-workflow-json). For consistent character generation with image editing, use [`workflow_character_dataset.json`](./test_resources/workflows/workflow_character_dataset.json).
 5.  🚀 Follow the [Usage](#usage) steps below to interact with your deployed endpoint.
 
 ## Available Docker Images
@@ -38,6 +38,7 @@ These images are available on Docker Hub under `runpod/worker-comfyui`:
 - **`runpod/worker-comfyui:<version>-base`**: Clean ComfyUI install with no models.
 - **`runpod/worker-comfyui:<version>-flux1-schnell`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell).
 - **`runpod/worker-comfyui:<version>-flux1-dev`**: Includes checkpoint, text encoders, and VAE for [FLUX.1 dev](https://huggingface.co/black-forest-labs/FLUX.1-dev).
+- **`runpod/worker-comfyui:<version>-flux2-klein`**: Includes Flux 2 Klein 9B model, Qwen 3.8B CLIP, Flux 2 VAE, and character dataset workflow for consistent character generation with image-to-image editing capabilities.
 - **`runpod/worker-comfyui:<version>-sdxl`**: Includes checkpoint and VAEs for [Stable Diffusion XL](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).
 - **`runpod/worker-comfyui:<version>-sd3`**: Includes checkpoint for [Stable Diffusion 3 medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium).
 
@@ -181,6 +182,7 @@ To get the correct `workflow` JSON for the API:
 
 ## Further Documentation
 
+- **[Character Dataset Workflow Guide](docs/character-dataset-workflow.md):** Complete guide for consistent character generation using Flux 2 Klein.
 - **[Deployment Guide](docs/deployment.md):** Detailed steps for deploying on RunPod.
 - **[Configuration Guide](docs/configuration.md):** Full list of environment variables (including S3 setup).
 - **[Customization Guide](docs/customization.md):** Adding custom models and nodes (Network Volumes, Docker builds).
