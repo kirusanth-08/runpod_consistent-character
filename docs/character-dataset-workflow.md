@@ -64,23 +64,42 @@ The API now supports a simplified format that only requires essential parameters
     "image": "data:image/png;base64,<your_base64_encoded_image>",
     "seed": 148059131098564,
     "width": 1024,
-    "height": 1024
+    "height": 1024,
+    "nsfw": false
   }
 }
 ```
 
 **Required Fields:**
 - `prompt` (string): Text description of the desired transformation
-- `image` (string): Base64 encoded input image (with or without data URI prefix)
+- `image` (string): Base64 encoded input image (with or without data URI prefix) OR direct image URL (http:// or https://)
 - `seed` (integer): Random seed for reproducible results
 - `width` (integer): Output image width in pixels
 - `height` (integer): Output image height in pixels
 
 **Optional Fields (with defaults):**
+- `nsfw` (boolean): Enable NSFW LoRA enhancement, default: false (when false, LoRA strength is set to 0; when true, LoRA strength is set to 1)
 - `cfg` (float): CFG scale, default: 1
 - `sampler_name` (string): Sampler to use, default: "euler"
 - `steps` (integer): Number of sampling steps, default: 4
-- `lora_strength` (float): LoRA strength, default: 0.2
+- `lora_strength` (float): LoRA strength (overrides the automatic nsfw-based value if provided)
+
+**Using Image URLs:**
+
+You can provide a direct URL instead of base64:
+
+```json
+{
+  "input": {
+    "prompt": "Transform this character",
+    "image": "https://example.com/character.jpg",
+    "seed": 123456789,
+    "width": 1024,
+    "height": 1024,
+    "nsfw": false
+  }
+}
+```
 
 ### Full Workflow Request Structure
 
@@ -148,17 +167,22 @@ For full workflow format, modify the `text` field in node 119:
 {
   "input": {
     "prompt": "Portrait of this character in a cyberpunk city",
-    "image": "data:image/png;base64,...",
+    "image": "https://example.com/character.jpg",
     "seed": 42,
     "width": 2048,
     "height": 2048,
+    "nsfw": true,
     "cfg": 1.5,
     "steps": 8,
-    "sampler_name": "euler",
-    "lora_strength": 0.3
+    "sampler_name": "euler"
   }
 }
 ```
+
+**NSFW Parameter Behavior:**
+- When `nsfw: false` (default): LoRA strength is automatically set to 0 (disabled)
+- When `nsfw: true`: LoRA strength is automatically set to 1 (enabled)
+- You can override this by explicitly providing `lora_strength`
 
 ### Adjusting Resolution (Full Workflow)
 
@@ -276,18 +300,30 @@ To improve output quality:
 import requests
 import base64
 
-# Read and encode your image
+# Example 1: Using base64 encoded image
 with open("character.png", "rb") as f:
     image_data = base64.b64encode(f.read()).decode("utf-8")
 
-# Prepare minimal request
 payload = {
     "input": {
         "prompt": "Make this person standing in a beautiful garden",
         "image": f"data:image/png;base64,{image_data}",
         "seed": 123456789,
         "width": 1024,
-        "height": 1024
+        "height": 1024,
+        "nsfw": False
+    }
+}
+
+# Example 2: Using image URL directly
+payload_with_url = {
+    "input": {
+        "prompt": "Make this person standing in a beautiful garden",
+        "image": "https://example.com/character.jpg",
+        "seed": 123456789,
+        "width": 1024,
+        "height": 1024,
+        "nsfw": True  # Enable NSFW LoRA
     }
 }
 
@@ -298,7 +334,7 @@ response = requests.post(
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     },
-    json=payload
+    json=payload  # or payload_with_url
 )
 
 # Get result
@@ -352,10 +388,9 @@ output_image_base64 = result["output"]["images"][0]["data"]
 ### cURL Example (Minimal Format)
 
 ```bash
-# Encode your image
+# Example 1: Using base64 encoded image
 IMAGE_BASE64=$(base64 -w 0 character.png)
 
-# Send request
 curl -X POST \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
@@ -365,7 +400,24 @@ curl -X POST \
       \"image\": \"data:image/png;base64,${IMAGE_BASE64}\",
       \"seed\": 123456789,
       \"width\": 1024,
-      \"height\": 1024
+      \"height\": 1024,
+      \"nsfw\": false
+    }
+  }" \
+  https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync
+
+# Example 2: Using image URL
+curl -X POST \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"input\": {
+      \"prompt\": \"Make this person standing in a beautiful garden\",
+      \"image\": \"https://example.com/character.jpg\",
+      \"seed\": 123456789,
+      \"width\": 1024,
+      \"height\": 1024,
+      \"nsfw\": true
     }
   }" \
   https://api.runpod.ai/v2/${ENDPOINT_ID}/runsync

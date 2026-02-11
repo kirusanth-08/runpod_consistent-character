@@ -4,6 +4,7 @@
     "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
     "seed": 148059131098564,
     "width": 1024,
-    "height": 1024
+    "height": 1024,
+    "nsfw": false
   }
 }

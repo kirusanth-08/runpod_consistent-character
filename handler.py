@@ -39,6 +39,32 @@ COMFY_HOST = "127.0.0.1:8188"
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
 
+
+def download_image_from_url(url):
+    """
+    Download an image from a URL and return it as a base64 encoded string.
+
+    Args:
+        url (str): The URL of the image to download
+
+    Returns:
+        str: Base64 encoded image data
+
+    Raises:
+        Exception: If the download fails
+    """
+    try:
+        print(f"worker-comfyui - Downloading image from URL: {url}")
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        image_data = base64.b64encode(response.content).decode("utf-8")
+        print(f"worker-comfyui - Successfully downloaded image from URL")
+        return image_data
+    except Exception as e:
+        error_msg = f"Failed to download image from URL: {url}. Error: {str(e)}"
+        print(f"worker-comfyui - {error_msg}")
+        raise Exception(error_msg)
+
 # ---------------------------------------------------------------------------
 # Helper: quick reachability probe of ComfyUI HTTP endpoint (port 8188)
 # ---------------------------------------------------------------------------
@@ -127,7 +153,7 @@ def _attempt_websocket_reconnect(ws_url, max_attempts, delay_s, initial_error):
     )
 
 
-def build_workflow_from_params(prompt, image_name, seed, width, height, cfg=1, sampler_name="euler", steps=4, lora_strength=0.2):
+def build_workflow_from_params(prompt, image_name, seed, width, height, cfg=1, sampler_name="euler", steps=4, lora_strength=1, nsfw=False):
     """
     Build the complete workflow from minimal parameters with defaults.
 
@@ -140,11 +166,15 @@ def build_workflow_from_params(prompt, image_name, seed, width, height, cfg=1, s
         cfg (float, optional): CFG scale. Defaults to 1.
         sampler_name (str, optional): Sampler name. Defaults to "euler".
         steps (int, optional): Number of sampling steps. Defaults to 4.
-        lora_strength (float, optional): LoRA strength. Defaults to 0.2.
+        lora_strength (float, optional): LoRA strength. Defaults to 1.
+        nsfw (bool, optional): Enable NSFW LoRA. Defaults to False.
 
     Returns:
         dict: Complete ComfyUI workflow
     """
+    # If nsfw is False, set lora_strength to 0
+    if not nsfw:
+        lora_strength = 0
     return {
         "99": {
             "inputs": {
@@ -350,7 +380,7 @@ def validate_input(job_input):
         if not isinstance(prompt, str):
             return None, "'prompt' must be a string"
         if not isinstance(image, str):
-            return None, "'image' must be a base64 encoded string"
+            return None, "'image' must be a base64 encoded string or URL"
         if not isinstance(seed, int):
             return None, "'seed' must be an integer"
         if not isinstance(width, int) or width <= 0:
@@ -358,11 +388,29 @@ def validate_input(job_input):
         if not isinstance(height, int) or height <= 0:
             return None, "'height' must be a positive integer"
 
+        # Handle image URL download
+        if image.startswith("http://") or image.startswith("https://"):
+            try:
+                image = download_image_from_url(image)
+                # Add data URI prefix if not present
+                if not image.startswith("data:"):
+                    image = f"data:image/png;base64,{image}"
+            except Exception as e:
+                return None, str(e)
+
         # Optional parameters with defaults
         cfg = job_input.get("cfg", 1)
         sampler_name = job_input.get("sampler_name", "euler")
         steps = job_input.get("steps", 4)
-        lora_strength = job_input.get("lora_strength", 0.2)
+        nsfw = job_input.get("nsfw", False)
+        
+        # Validate nsfw type
+        if not isinstance(nsfw, bool):
+            return None, "'nsfw' must be a boolean"
+        
+        # Set lora_strength based on nsfw (1 if True, 0 if False)
+        # User can still override with explicit lora_strength parameter
+        lora_strength = job_input.get("lora_strength", 1 if nsfw else 0)
 
         # Generate unique image filename
         image_name = f"input_character_{seed}.png"
@@ -377,7 +425,8 @@ def validate_input(job_input):
             cfg=cfg,
             sampler_name=sampler_name,
             steps=steps,
-            lora_strength=lora_strength
+            lora_strength=lora_strength,
+            nsfw=nsfw
         )
 
         # Convert image to the format expected by the handler
